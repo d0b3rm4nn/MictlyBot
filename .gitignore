@@ -1,0 +1,13 @@
+.env
+*.db
+*.db-wal
+*.db-shm
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+*.session
+*.log
