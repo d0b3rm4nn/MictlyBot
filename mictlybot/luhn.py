@@ -7,6 +7,8 @@ descarta la entrada.
 
 from __future__ import annotations
 
+import random
+
 MIN_LENGTH = 12
 MAX_LENGTH = 19
 
@@ -47,3 +49,59 @@ def check_card(raw: str) -> tuple[bool, str]:
     if not passes_luhn(digits):
         return False, "Dígito de control incorrecto."
     return True, ""
+
+
+def luhn_valid(number: str) -> bool:
+    """True si el numero cierra en Luhn (suma multiplo de 10)."""
+    total = 0
+    for i, ch in enumerate(reversed(number)):
+        d = int(ch)
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+def check_digit(partial: str) -> str:
+    """Digito que vuelve Luhn-valido a partial + <digito>."""
+    total = 0
+    for i, ch in enumerate(reversed(partial)):
+        d = int(ch)
+        if i % 2 == 0:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return str((10 - total % 10) % 10)
+
+
+def generate_pans(template: str, n: int = 10) -> list[str]:
+    """Completa los 'x' de la plantilla con PANs Luhn-validos y unicos."""
+    t = template.strip().lower()
+    if not t:
+        return []
+    idxs = [i for i, c in enumerate(t) if c == "x"]
+    if not idxs:
+        return [t] * n
+    last = len(t) - 1
+    out: list[str] = []
+    seen: set[str] = set()
+    guard = 0
+    while len(out) < n and guard < n * 200:
+        guard += 1
+        chars = list(t)
+        for i in idxs:
+            if i != last:
+                chars[i] = str(random.randint(0, 9))
+        partial = "".join(chars[:last])
+        if t[last] == "x":
+            chars[last] = check_digit(partial)
+        elif check_digit(partial) != t[last]:
+            continue
+        pan = "".join(chars)
+        if pan not in seen:
+            seen.add(pan)
+            out.append(pan)
+    return out

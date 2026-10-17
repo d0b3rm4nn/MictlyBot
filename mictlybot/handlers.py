@@ -203,3 +203,78 @@ async def target_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     await update.message.reply_text(
         format_targets(registry, footer), parse_mode="Markdown"
     )
+
+
+async def _lookup_bin(bin6: str) -> tuple[str, str]:
+    """(bank, country) del BIN. Best-effort: si falla, devuelve N/A."""
+    import inspect
+
+    from . import binlist as bl
+
+    try:
+        from .config import load_config
+
+        cfg = load_config(require_token=False)
+    except Exception:
+        cfg = None
+
+    for name in ("fetch_bin", "get_bin", "lookup_bin", "lookup", "fetch"):
+        fn = getattr(bl, name, None)
+        if not callable(fn):
+            continue
+        try:
+            res = fn(bin6, cfg) if cfg is not None else fn(bin6)
+        except TypeError:
+            res = fn(bin6)
+        except Exception:
+            continue
+        if inspect.isawaitable(res):
+            res = await res
+        if isinstance(res, tuple):
+            res = res[0]
+        if res is not None:
+            return (
+                getattr(res, "bank", None) or "N/A",
+                getattr(res, "country", None) or "N/A",
+            )
+    return "N/A", "N/A"
+
+
+async def gen_cmd(update, context):
+    """/gen <pan|mm|yy|cvv> — completa los 'x' con PANs Luhn-validos."""
+    import random
+
+    from .formatter import format_gen
+    from .luhn import generate_pans
+
+    args = list(getattr(context, "args", None) or [])
+    if not args:
+        await update.message.reply_text("Uso: /gen 416916141303xxxx|01|2029|xxx")
+        return
+
+    parts = args[0].split("|")
+    pan_t = parts[0].strip()
+    mm = parts[1].strip() if len(parts) > 1 else ""
+    yy = parts[2].strip() if len(parts) > 2 else ""
+    cvv_t = parts[3].strip() if len(parts) > 3 else ""
+
+    if "x" not in pan_t.lower():
+        await update.message.reply_text("La plantilla no trae 'x' que completar.")
+        return
+
+    n = 10
+    if len(args) > 1 and args[1].isdigit():
+        n = max(1, min(50, int(args[1])))
+
+    cards = []
+    for pan in generate_pans(pan_t, n):
+        cvv = "".join(
+            str(random.randint(0, 9)) if c.lower() == "x" else c for c in cvv_t
+        )
+        cards.append(f"{pan}|{mm}|{yy}|{cvv}")
+
+    bin6 = pan_t[:6]
+    bank, country = await _lookup_bin(bin6)
+    await update.message.reply_text(
+        format_gen(cards, bin6, bank, country), parse_mode=None
+    )

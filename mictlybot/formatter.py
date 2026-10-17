@@ -73,3 +73,22 @@ def format_targets(registry, footer: str) -> str:
     lines.append("")
     lines.append(f"_Por defecto: `{registry.default_name()}`_")
     return "\n".join(lines) + footer
+
+
+def format_gen(cards: list[str], bin6: str, bank: str, country: str) -> str:
+    """Salida de /gen con el formato #GEN."""
+    sep = "— " * 10 + "—"
+    lines = [
+        "⚡️ - #GEN",
+        sep,
+        f"» Format ->> {bin6} 💳",
+        sep,
+        *cards,
+        sep,
+        f"» Country ->> {country}",
+        f"» Bank ->> {bank}",
+        sep,
+        "» By ->> @d0b3rm4nn",
+        sep,
+    ]
+    return "\n".join(lines)
