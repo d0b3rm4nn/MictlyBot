@@ -1,13 +1,10 @@
-"""Cliente asíncrono para lookup.binlist.net.
-
-BinList solo devuelve metadatos públicos de un prefijo (6-8 dígitos): banco,
-marca, país, tipo y esquema. No hay datos de tarjetas ni cuenta que descartar.
-"""
+"""Cliente asíncrono para lookup.binlist.net."""
 
 from __future__ import annotations
 
 import asyncio
 import re
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, fields
 from typing import Any, Protocol
 
@@ -57,10 +54,7 @@ class BinInfo:
 
 
 def normalize_bin(raw: str) -> str:
-    """Acepta el prefijo con espacios o guiones; recorta a 8 dígitos.
-
-    Lanza ValueError si trae letras o si quedan menos de 6 dígitos.
-    """
+    """Acepta el prefijo con espacios o guiones; recorta a 8 dígitos."""
     cleaned = (raw or "").strip().replace("-", "").replace(" ", "")
     if not cleaned.isdigit():
         raise ValueError("El BIN solo puede contener dígitos.")
@@ -71,8 +65,6 @@ def normalize_bin(raw: str) -> str:
 
 
 class CacheBackend(Protocol):
-    """Contrato mínimo queBinListClient necesita de una caché."""
-
     def get(self, key: str) -> Any: ...
 
     def set(self, key: str, value: Any) -> None: ...
@@ -84,20 +76,21 @@ class BinListClient:
         cache: CacheBackend,
         user_agent: str,
         client: httpx.AsyncClient | None = None,
+        proxy_provider: Callable[[], str | None] | None = None,
     ) -> None:
         self._cache = cache
         self._user_agent = user_agent
         self._client = client
         self._owns_client = client is None
+        self._proxy_provider = proxy_provider
+
+    def _headers(self) -> dict[str, str]:
+        return {"Accept-Version": "3", "User-Agent": self._user_agent}
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
             self._client = httpx.AsyncClient(
-                timeout=TIMEOUT_SECONDS,
-                headers={
-                    "Accept-Version": "3",
-                    "User-Agent": self._user_agent,
-                },
+                timeout=TIMEOUT_SECONDS, headers=self._headers()
             )
         return self._client
 
@@ -106,11 +99,22 @@ class BinListClient:
             await self._client.aclose()
             self._client = None
 
+    async def _request(self, bin_number: str) -> httpx.Response:
+        # Con rotación de proxy hace falta un cliente por petición; si nos
+        # inyectaron un cliente (tests) o no hay proxy, reutilizamos el nuestro.
+        if self._client is None and self._proxy_provider is not None:
+            proxy_url = self._proxy_provider()
+            async with httpx.AsyncClient(
+                timeout=TIMEOUT_SECONDS, headers=self._headers(), proxy=proxy_url
+            ) as client:
+                return await client.get(BASE_URL.format(bin=bin_number))
+        client = await self._get_client()
+        return await client.get(BASE_URL.format(bin=bin_number))
+
     async def lookup(self, bin_number: str) -> tuple[BinInfo, bool]:
         """Devuelve (info, from_cache)."""
         cached = self._cache.get(bin_number)
         if cached is not None:
-            # La caché SQLite guarda un dict serializado, no el dataclass.
             info = cached if isinstance(cached, BinInfo) else BinInfo.from_dict(cached)
             return info, True
 
@@ -119,12 +123,11 @@ class BinListClient:
         return info, False
 
     async def _fetch(self, bin_number: str) -> BinInfo:
-        client = await self._get_client()
         last_error: BinError | None = None
 
         for attempt in range(MAX_RETRIES):
             try:
-                response = await client.get(BASE_URL.format(bin=bin_number))
+                response = await self._request(bin_number)
             except httpx.HTTPError as exc:
                 last_error = BinError(f"Error de conexión: {exc}")
             else:
@@ -136,12 +139,10 @@ class BinListClient:
                     )
                 if response.status_code == 404:
                     raise BinNotFound(f"No se encontró información para `{bin_number}`.")
-                last_error = BinError(
-                    f"BinList respondió HTTP {response.status_code}."
-                )
+                last_error = BinError(f"BinList respondió HTTP {response.status_code}.")
 
             if attempt < MAX_RETRIES - 1:
-                await asyncio.sleep(2 ** attempt)
+                await asyncio.sleep(2**attempt)
 
         raise last_error or BinError("Fallo desconocido consultando BinList.")
 

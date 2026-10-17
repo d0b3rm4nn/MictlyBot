@@ -1,117 +1,66 @@
-"""Configuración leída desde el entorno."""
+"""Pool de User-Agents rotatorios."""
 
 from __future__ import annotations
 
-import os
-from dataclasses import dataclass
-from pathlib import Path
+import random
 
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    def load_dotenv(*_args: object, **_kwargs: object) -> bool:
-        return False
+CHROME_UAS = [
+    "Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.1 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2227.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2226.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 6.4; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2225.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 6.3; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2225.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 5.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2224.3 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/40.0.2214.93 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.124 Safari/537.36",
+]
 
-load_dotenv()
+FIREFOX_UAS = [
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:40.0) Gecko/20100101 Firefox/40.1",
+    "Mozilla/5.0 (Windows NT 6.3; rv:36.0) Gecko/20100101 Firefox/36.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10; rv:33.0) Gecko/20100101 Firefox/33.0",
+    "Mozilla/5.0 (X11; Linux i586; rv:31.0) Gecko/20100101 Firefox/31.0",
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:31.0) Gecko/20130401 Firefox/31.0",
+    "Mozilla/5.0 (Windows NT 5.1; rv:31.0) Gecko/20100101 Firefox/31.0",
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:29.0) Gecko/20120101 Firefox/29.0",
+    "Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:25.0) Gecko/20100101 Firefox/29.0",
+    "Mozilla/5.0 (X11; OpenBSD amd64; rv:28.0) Gecko/20100101 Firefox/28.0",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:28.0) Gecko/20100101 Firefox/28.0",
+]
 
-ROOT = Path(__file__).resolve().parent.parent
+OPERA_UAS = [
+    "Opera/9.80 (Windows NT 6.0) Presto/2.12.388 Version/12.14",
+    "Opera/9.80 (X11; Linux i686; Ubuntu/14.10) Presto/2.12.388 Version/12.16",
+    "Mozilla/5.0 (Windows NT 6.0; rv:2.0) Gecko/20100101 Firefox/4.0 Opera 12.14",
+    "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.0) Opera 12.14",
+    "Opera/12.80 (Windows NT 5.1; U; en) Presto/2.10.289 Version/12.02",
+    "Opera/9.80 (Windows NT 6.1; U; es-ES) Presto/2.9.181 Version/12.00",
+    "Opera/9.80 (Windows NT 5.1; U; zh-sg) Presto/2.9.181 Version/12.00",
+    "Opera/12.0(Windows NT 5.2;U;en)Presto/22.9.168 Version/12.00",
+    "Opera/12.0(Windows NT 5.1;U;en)Presto/22.9.168 Version/12.00",
+    "Mozilla/5.0 (Windows NT 5.1) Gecko/20100101 Firefox/14.0 Opera/12.0",
+]
 
+EXPLORER_UAS = [
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; Trident/7.0; AS; rv:11.0) like Gecko",
+    "Mozilla/5.0 (compatible, MSIE 11, Windows NT 6.3; Trident/7.0; rv:11.0) like Gecko",
+    "Mozilla/1.22 (compatible; MSIE 10.0; Windows 3.1)",
+    "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; .NET CLR 3.5.30729; .NET CLR 3.0.30729; .NET CLR 2.0.50727; Media Center PC 6.0)",
+    "Mozilla/5.0 (compatible; MSIE 10.0; Windows NT 7.0; InfoPath.3; .NET CLR 3.1.40767; Trident/6.0; en-IN)",
+]
 
-class ConfigError(RuntimeError):
-    """Falta configuración obligatoria para arrancar."""
+NAVEGADORES: dict[str, list[str]] = {
+    "Chrome": CHROME_UAS,
+    "Firefox": FIREFOX_UAS,
+    "Opera": OPERA_UAS,
+    "Explorer": EXPLORER_UAS,
+}
 
-
-@dataclass(frozen=True)
-class Config:
-    token: str
-    cache_ttl_seconds: int
-    rate_limit_per_minute: int
-    user_agent: str
-    footer: str
-    cache_db_path: str
-
-    # --- checker de tarjetas ---
-    targets_file: str = "targets.toml"
-    default_target: str = ""
-    check_rate_limit_per_minute: int = 3
-    http_timeout: float = 30.0
-    use_proxy: bool = True
-    proxy_file: str = "proxy.txt"
-    cardcheck_bin_cache: bool = True
-
-    # respaldo si targets.toml no existe
-    stripe_endpoint: str = "https://api.stripe.com/v1/payment_methods"
-    stripe_key: str = ""
-    stripe_origin: str = "https://js.stripe.com"
-    stripe_referer: str = "https://js.stripe.com/"
-
-    # solo para tools/stripe_probe.py
-    stripe_secret_key: str = ""
-
-
-def resolve_path(path: str) -> Path:
-    """Ruta relativa al cwd si existe ahí; si no, a la raíz del proyecto."""
-    candidate = Path(path)
-    if candidate.is_absolute():
-        return candidate
-    if candidate.exists():
-        return candidate
-    return ROOT / candidate
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if not raw:
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        return default
+DEFAULT_UA = CHROME_UAS[8]
 
 
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if not raw:
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        return default
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if not raw:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on", "si", "sí"}
-
-
-def load_config(*, require_token: bool = True) -> Config:
-    token = os.getenv("TELEGRAM_TOKEN", "").strip()
-    if require_token and not token:
-        raise ConfigError(
-            "TELEGRAM_TOKEN no está definido. Copia .env.example a .env y pega "
-            "el token de @BotFather, o expón la variable en el entorno."
-        )
-    return Config(
-        token=token,
-        cache_ttl_seconds=_env_int("CACHE_TTL_SECONDS", 86400),
-        rate_limit_per_minute=_env_int("RATE_LIMIT_PER_MINUTE", 5),
-        user_agent=os.getenv("BINLIST_USER_AGENT", "MictlyBot/1.0").strip(),
-        footer=os.getenv("FOOTER", "\n\n🤖 **Bot By d0b3rm4nn**").strip(),
-        cache_db_path=os.getenv("CACHE_DB_PATH", "bins_cache.db").strip(),
-        targets_file=os.getenv("TARGETS_FILE", "targets.toml").strip(),
-        default_target=os.getenv("DEFAULT_TARGET", "").strip(),
-        check_rate_limit_per_minute=_env_int("CHECK_RATE_LIMIT_PER_MINUTE", 3),
-        http_timeout=_env_float("HTTP_TIMEOUT", 30.0),
-        use_proxy=_env_bool("USE_PROXY", True),
-        proxy_file=os.getenv("PROXY_FILE", "proxy.txt").strip(),
-        cardcheck_bin_cache=_env_bool("CARDCHECK_BIN_CACHE", True),
-        stripe_endpoint=os.getenv(
-            "STRIPE_ENDPOINT", "https://api.stripe.com/v1/payment_methods"
-        ).strip(),
-        stripe_key=(os.getenv("STRIPE_KEY") or os.getenv("STRIPE_PK") or "").strip(),
-        stripe_origin=os.getenv("STRIPE_ORIGIN", "https://js.stripe.com").strip(),
-        stripe_referer=os.getenv("STRIPE_REFERER", "https://js.stripe.com/").strip(),
-        stripe_secret_key=os.getenv("STRIPE_SECRET_KEY", "").strip(),
-    )
+def random_ua() -> str:
+    """User-Agent aleatorio de un navegador aleatorio."""
+    return random.choice(NAVEGADORES[random.choice(list(NAVEGADORES))])

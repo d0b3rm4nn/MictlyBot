@@ -106,13 +106,21 @@ class Target:
     def masked_key(self) -> str:
         if not self.key:
             return "(sin clave)"
-        return f"{self.key[:12]}...{self.key[-4:]}" if len(self.key) > 20 else self.key
+        if len(self.key) <= 20:
+            return self.key
+        return f"{self.key[:12]}...{self.key[-4:]}"
 
 
 class TargetRegistry:
     """Carga targets.toml y resuelve perfiles por nombre."""
 
-    def __init__(self, path: str, *, default_name: str = "", fallback: Target | None = None) -> None:
+    def __init__(
+        self,
+        path: str,
+        *,
+        default_name: str = "",
+        fallback: Target | None = None,
+    ) -> None:
         self._path: Path = resolve_path(path)
         self._default = default_name
         self._fallback = fallback
@@ -151,7 +159,8 @@ class TargetRegistry:
         raw = targets.get(chosen)
         if raw is None:
             raise TargetError(
-                f"Target desconocido: {chosen}. Disponibles: {', '.join(self.names())}"
+                f"Target desconocido: {chosen}. "
+                f"Disponibles: {', '.join(self.names())}"
             )
 
         fields = dict(STRIPE_FIELDS)
@@ -181,7 +190,8 @@ class TargetRegistry:
         except TargetError:
             return None
 
-    def from_config(config: Config) -> TargetRegistry:  # type: ignore[misc]
+    @staticmethod
+    def from_config(config: Config) -> TargetRegistry:
         fallback = Target(
             name="env",
             endpoint=config.stripe_endpoint,

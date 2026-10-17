@@ -16,7 +16,8 @@ from .binlist import (
     BinRateLimited,
     normalize_bin,
 )
-from .cardcheck import CardData, check_card as check_stripe
+from .cardcheck import CardData
+from .cardcheck import check_card as check_stripe
 from .formatter import format_bin, format_check, format_targets
 from .luhn import check_card
 from .ratelimit import RateLimiter

