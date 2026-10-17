@@ -9,9 +9,18 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters
 from .binlist import BinListClient
 from .commands import register_commands
 from .config import load_config
-from .handlers import bin_checker, help_cmd, luhn_checker, start
+from .handlers import (
+    bin_checker,
+    check_cmd,
+    help_cmd,
+    luhn_checker,
+    start,
+    target_cmd,
+)
+from .proxy import ProxyPool
 from .ratelimit import RateLimiter
 from .sqlite_cache import SQLiteCache
+from .targets import TargetRegistry
 
 
 def build_application() -> Application:
@@ -25,18 +34,31 @@ def build_application() -> Application:
     logging.getLogger("httpx").setLevel(logging.WARNING)
 
     cache = SQLiteCache(config.cache_db_path, config.cache_ttl_seconds)
-    bin_client = BinListClient(cache=cache, user_agent=config.user_agent)
+    pool = ProxyPool(config.proxy_file, config.use_proxy)
+    bin_client = BinListClient(
+        cache=cache,
+        user_agent=config.user_agent,
+        proxy_provider=pool.random,
+    )
 
     app = Application.builder().token(config.token).build()
     app.bot_data["bin_client"] = bin_client
     app.bot_data["rate_limiter"] = RateLimiter(config.rate_limit_per_minute)
+    app.bot_data["check_limiter"] = RateLimiter(config.check_rate_limit_per_minute)
+    app.bot_data["targets"] = TargetRegistry.from_config(config)
+    app.bot_data["proxy_pool"] = pool
+    app.bot_data["http_timeout"] = config.http_timeout
     app.bot_data["footer"] = config.footer
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("bin", bin_checker))
     app.add_handler(CommandHandler("luhn", luhn_checker))
+    app.add_handler(CommandHandler("check", check_cmd))
+    app.add_handler(CommandHandler("target", target_cmd))
     app.add_handler(MessageHandler(filters.Regex(r"^\.bin\s+"), bin_checker))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.luhn\s+"), luhn_checker))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.check\s+"), check_cmd))
 
     async def post_shutdown(_: Application) -> None:
         await bin_client.aclose()
@@ -50,5 +72,8 @@ def build_application() -> Application:
 
 def run() -> None:
     app = build_application()
-    logging.info("Bot iniciado: BinList + caché persistente")
+    logging.info(
+        "Bot iniciado: BinList + caché persistente + checker (%d proxies)",
+        app.bot_data["proxy_pool"].count(),
+    )
     app.run_polling()
