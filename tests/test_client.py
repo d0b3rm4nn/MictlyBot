@@ -1,9 +1,9 @@
 import httpx
 import pytest
 
-from mictlybot.binlist import (
+from mictlybot.bincheck import (
+    BinCheckClient,
     BinError,
-    BinListClient,
     BinNotFound,
     BinRateLimited,
 )
@@ -22,7 +22,7 @@ PAYLOAD = {
 def make_client(handler, ttl=60):
     transport = httpx.MockTransport(handler)
     client = httpx.AsyncClient(transport=transport)
-    return BinListClient(
+    return BinCheckClient(
         cache=TTLCache(ttl_seconds=ttl), user_agent="test", client=client
     )
 

@@ -3,7 +3,7 @@ import time
 
 import pytest
 
-from mictlybot.binlist import BinInfo
+from mictlybot.bincheck import BinInfo
 from mictlybot.sqlite_cache import SQLiteCache
 
 INFO = {

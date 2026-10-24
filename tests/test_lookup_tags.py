@@ -2,7 +2,7 @@
 
 import asyncio
 
-from mictlybot.binlist import BinError, BinNotFound, BinRateLimited
+from mictlybot.bincheck import BinError, BinNotFound, BinRateLimited
 from mictlybot.handlers import _lookup_bin
 
 

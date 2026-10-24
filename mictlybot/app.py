@@ -13,7 +13,7 @@ from telegram.ext import (
     filters,
 )
 
-from .binlist import BinListClient
+from .bincheck import BinCheckClient
 from .commands import register_commands
 from .config import load_config
 from .handlers import (
@@ -43,7 +43,7 @@ def build_application() -> Application:
 
     cache = SQLiteCache(config.cache_db_path, config.cache_ttl_seconds)
     pool = ProxyPool(config.proxy_file, config.use_proxy)
-    bin_client = BinListClient(
+    bin_client = BinCheckClient(
         cache=cache,
         user_agent=config.user_agent,
         proxy_provider=pool.random,
@@ -92,7 +92,7 @@ def build_application() -> Application:
 def run() -> None:
     app = build_application()
     logging.info(
-        "Bot iniciado: BinList + caché persistente + checker (%d proxies)",
+        "Bot iniciado: BinCheck + caché persistente + checker (%d proxies)",
         app.bot_data["proxy_pool"].count(),
     )
     app.run_polling()

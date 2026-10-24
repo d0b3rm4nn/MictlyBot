@@ -1,6 +1,6 @@
 import pytest
 
-from mictlybot.binlist import normalize_bin
+from mictlybot.bincheck import normalize_bin
 
 
 @pytest.mark.parametrize(

@@ -1,4 +1,4 @@
-from mictlybot.binlist import BinInfo
+from mictlybot.bincheck import BinInfo
 from mictlybot.formatter import _safe, format_bin
 
 INFO = BinInfo(

@@ -1,4 +1,4 @@
-"""MictlyBot — bot de Telegram para consultar metadatos de BIN vía BinList."""
+"""MictlyBot — bot de Telegram para consultar metadatos de BIN vía BinCheck."""
 
 from .app import run
 

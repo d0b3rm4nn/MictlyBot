@@ -8,11 +8,10 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from . import proxy as proxy_mod
-from .binlist import BinError
-from .binlist import (
+from .bincheck import (
+    BinCheckClient,
     BinError,
     BinInfo,
-    BinListClient,
     BinNotFound,
     BinRateLimited,
     normalize_bin,
@@ -88,7 +87,7 @@ async def luhn_checker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def bin_checker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     limiter: RateLimiter = context.bot_data["rate_limiter"]
-    client: BinListClient = context.bot_data["bin_client"]
+    client: BinCheckClient = context.bot_data["bin_client"]
     footer: str = context.bot_data["footer"]
 
     allowed, retry_after = limiter.allow(update.effective_user.id)
@@ -114,7 +113,7 @@ async def bin_checker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     waiting = await update.message.reply_text(
-        f"📡 Consultando en **BinList** para: `{bin_number}`...",
+        f"📡 Consultando en **BinCheck** para: `{bin_number}`...",
         parse_mode="Markdown",
     )
 
@@ -137,7 +136,7 @@ async def bin_checker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 async def check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     limiter: RateLimiter = context.bot_data["check_limiter"]
     registry: TargetRegistry = context.bot_data["targets"]
-    bin_client: BinListClient = context.bot_data["bin_client"]
+    bin_client: BinCheckClient = context.bot_data["bin_client"]
     pool: proxy_mod.ProxyPool = context.bot_data["proxy_pool"]
     footer: str = context.bot_data["footer"]
     timeout: float = context.bot_data["http_timeout"]
@@ -225,7 +224,7 @@ def _bin_prefix(template: str) -> str | None:
 
 async def _lookup_bin(context: ContextTypes.DEFAULT_TYPE, bin6: str) -> tuple[str, str]:
     """(bank, country) del BIN. Best-effort: si falla, devuelve N/A."""
-    client: BinListClient = context.bot_data["bin_client"]
+    client: BinCheckClient = context.bot_data["bin_client"]
     try:
         info, _ = await client.lookup(bin6)
     except BinRateLimited as exc:

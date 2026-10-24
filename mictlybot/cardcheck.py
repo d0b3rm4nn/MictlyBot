@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 
 import httpx
 
-from .binlist import BinError, BinInfo, BinListClient
+from .bincheck import BinCheckClient, BinError, BinInfo
 from .cache import TTLCache
 from .config import load_config
 from .proxy import ProxyPool
@@ -331,9 +331,9 @@ async def check_many(
     return await asyncio.gather(*(one(line) for line in lines))
 
 
-def _bin_client() -> BinListClient:
+def _bin_client() -> BinCheckClient:
     config = load_config(require_token=False)
-    return BinListClient(
+    return BinCheckClient(
         cache=TTLCache(config.cache_ttl_seconds),
         user_agent=config.user_agent,
     )
