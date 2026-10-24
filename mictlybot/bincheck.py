@@ -1,7 +1,7 @@
 """Cliente asincrono para la API de BinCheck.io (reemplaza a binlist.net).
 
-Endpoint:  GET https://bincheck.io/api/bin/{bin}
-Auth:      Authorization: Bearer $BINCHECK_API_KEY
+Endpoint:  GET https://fraud-signals-bin-ip-email-phone-sanctions-risk-api.p.rapidapi.com/bin-lookup?bin={bin}
+Auth:      x-rapidapi-key + x-rapidapi-host (clave de RapidAPI)
 Docs:      https://bincheck.io/docs
 """
 
@@ -17,7 +17,8 @@ from typing import Any, Protocol
 import httpx
 
 BIN_PATTERN = re.compile(r"^\d{6,8}$")
-BASE_URL = "https://bincheck.io/api/bin/{bin}"
+RAPIDAPI_HOST = "fraud-signals-bin-ip-email-phone-sanctions-risk-api.p.rapidapi.com"
+BASE_URL = f"https://{RAPIDAPI_HOST}/bin-lookup?bin={{bin}}"
 TIMEOUT_SECONDS = 10.0
 MAX_RETRIES = 3
 RETRY_STATUSES = frozenset({500, 502, 503, 504})
@@ -134,8 +135,8 @@ class BinCheckClient:
         key = self._key()
         return {
             "Accept": "application/json",
-            "Authorization": f"Bearer {key}",
-            "x-api-key": key,
+            "x-rapidapi-key": key,
+            "x-rapidapi-host": RAPIDAPI_HOST,
             "User-Agent": self._user_agent,
         }
 

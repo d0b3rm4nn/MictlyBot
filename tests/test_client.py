@@ -29,7 +29,7 @@ def make_client(handler, ttl=60):
 
 async def test_lookup_parses_payload():
     def handler(request):
-        assert str(request.url).endswith("/123456")
+        assert str(request.url).endswith("bin=123456")
         return httpx.Response(200, json=PAYLOAD)
 
     info, from_cache = await make_client(handler).lookup("123456")
