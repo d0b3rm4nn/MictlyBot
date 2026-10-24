@@ -281,6 +281,14 @@ async def gen_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if len(pan_t) < target:  # p. ej. solo el BIN -> se rellena solo
         pan_t = pan_t + "x" * (target - len(pan_t))
         has_x = True
+    elif len(pan_t) > target and set(pan_t[target:].lower()) <= {"x"}:
+        # Sobraban 'x': recortamos al largo del esquema. Si al recortar se queda
+        # sin 'x', el ultimo digito pasa a 'x' para que el control se recalcule
+        # con la longitud nueva (antes no era el control de un PAN mas corto).
+        pan_t = pan_t[:target]
+        if "x" not in pan_t:
+            pan_t = pan_t[:-1] + "x"
+        has_x = True
 
     n = 10 if has_x else 1
     if len(args) > 1 and args[1].isdigit():
