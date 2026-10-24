@@ -60,6 +60,14 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def luhn_checker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    limiter: RateLimiter = context.bot_data["rate_limiter"]
+    allowed, retry_after = limiter.allow(update.effective_user.id)
+    if not allowed:
+        await update.message.reply_text(
+            f"⏳ Vas muy rápido. Espera {retry_after:.0f} s e inténtalo de nuevo."
+        )
+        return
+
     parts = (update.message.text or "").split(maxsplit=1)
     if len(parts) < 2:
         await update.message.reply_text(
@@ -220,13 +228,27 @@ async def _lookup_bin(context: ContextTypes.DEFAULT_TYPE, bin6: str) -> tuple[st
     client: BinListClient = context.bot_data["bin_client"]
     try:
         info, _ = await client.lookup(bin6)
+    except BinRateLimited as exc:
+        retry = getattr(exc, "retry_after", None)
+        tag = f"n/d [429/{retry}s]" if retry else "n/d [429]"
+        return tag, tag
+    except BinNotFound:
+        return "n/d [404]", "n/d [404]"
     except (BinError, ValueError):
-        return "N/A", "N/A"
+        return "n/d [err]", "n/d [err]"
     return info.bank or "N/A", info.country or "N/A"
 
 
 async def gen_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/gen <pan|mm|yy|cvv> [n] — completa los 'x' con PANs Luhn-validos."""
+    limiter: RateLimiter = context.bot_data["rate_limiter"]
+    allowed, retry_after = limiter.allow(update.effective_user.id)
+    if not allowed:
+        await update.message.reply_text(
+            f"⏳ Vas muy rápido. Espera {retry_after:.0f} s e inténtalo de nuevo."
+        )
+        return
+
     import random
 
     from .formatter import format_gen

@@ -27,6 +27,10 @@ class BinNotFound(BinError):
 class BinRateLimited(BinError):
     """BinList respondió 429."""
 
+    def __init__(self, message: str, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.retry_after = retry_after
+
 
 @dataclass(frozen=True)
 class BinInfo:
@@ -134,8 +138,11 @@ class BinListClient:
                 if response.status_code == 200:
                     return _parse(bin_number, response.json())
                 if response.status_code == 429:
+                    hdr = response.headers.get("Retry-After")
+                    retry = float(hdr) if hdr and hdr.strip().isdigit() else None
                     raise BinRateLimited(
-                        "BinList está limitando las consultas. Espera un minuto."
+                        "BinList está limitando las consultas. Espera un minuto.",
+                        retry_after=retry,
                     )
                 if response.status_code == 404:
                     raise BinNotFound(f"No se encontró información para `{bin_number}`.")
