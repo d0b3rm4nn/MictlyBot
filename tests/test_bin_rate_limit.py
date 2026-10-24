@@ -56,3 +56,14 @@ def test_429_se_muestra_como_cuota():
 
 def test_404_sigue_siendo_n_d():
     assert _correr(None).bank == ""
+
+
+def test_mensaje_429_incluye_reintento():
+    from mictlybot.bincheck import BinRateLimited
+    from mictlybot.handlers import _mensaje_429
+
+    con = _mensaje_429(BinRateLimited("cuota", retry_after=42))
+    sin = _mensaje_429(BinRateLimited("cuota"))
+
+    assert "cuota" in con and "42 s" in con
+    assert "cuota" in sin and "reintenta" not in sin

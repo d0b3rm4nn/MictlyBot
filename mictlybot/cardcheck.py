@@ -83,20 +83,28 @@ CARD_RE = re.compile(r"^\d{12,19}$")
 class RateLimited:
     """El BIN no se pudo resolver por cuota (429), no porque no exista (404)."""
 
+    __slots__ = ("retry_after",)
+
+    def __init__(self, retry_after: float | None = None) -> None:
+        self.retry_after = retry_after
+
 
 RATE_LIMITED = RateLimited()
 
+BinLookup = Callable[[str], Awaitable[BinInfo | None | RateLimited]]
+
 
 def make_bin_lookup(client: BinCheckClient) -> BinLookup:
-    """Un 404 es `None` (no existe); un 429 es RATE_LIMITED (reintentable)."""
+    """Un 404 es None (no existe); un 429 es RateLimited (reintentable)."""
 
     async def lookup(bin_number: str) -> BinInfo | None | RateLimited:
         try:
             info, _ = await client.lookup(bin_number)
         except BinNotFound:
             return None
-        except BinRateLimited:
-            return RATE_LIMITED
+        except BinRateLimited as exc:
+            retry = getattr(exc, "retry_after", None)
+            return RateLimited(retry) if retry else RATE_LIMITED
         return info
 
     return lookup
@@ -291,7 +299,7 @@ async def check_card(
     )
     bin_task = bin_lookup(card.bin) if bin_lookup else asyncio.sleep(0, result=None)
     ident, bin_info = await asyncio.gather(ident_task, bin_task)
-    if bin_info is RATE_LIMITED:
+    if isinstance(bin_info, RateLimited):
         bin_info = BinInfo(
             bin_number=card.bin,
             bank="429 cuota",

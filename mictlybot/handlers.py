@@ -15,7 +15,7 @@ from .bincheck import (
     BinRateLimited,
     normalize_bin,
 )
-from .cardcheck import CardData, make_bin_lookup
+from .cardcheck import CardData, RateLimited, make_bin_lookup
 from .cardcheck import check_card as check_stripe
 from .formatter import format_bin, format_check, format_targets
 from .luhn import check_card
@@ -120,7 +120,7 @@ async def bin_checker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         info, from_cache = await client.lookup(bin_number)
         text = format_bin(info, from_cache, footer)
     except BinRateLimited as exc:
-        text = f"⚠️ **Límite de API:** {exc}"
+        text = _mensaje_429(exc)
     except BinNotFound as exc:
         text = f"❌ {exc}"
     except BinError as exc:
@@ -130,6 +130,12 @@ async def bin_checker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         text = "⚠️ Error interno. Inténtalo más tarde."
 
     await waiting.edit_text(text, parse_mode="Markdown")
+
+
+def _mensaje_429(exc: BinRateLimited) -> str:
+    """Mensaje del /bin cuando BinCheck responde 429, con la cola de reintento."""
+    cola = f" — reintenta en {exc.retry_after:g} s" if exc.retry_after else ""
+    return f"⚠️ **Límite de API:** {exc}{cola}"
 
 
 async def check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -217,16 +223,17 @@ def _bin_prefix(template: str) -> str | None:
 async def _lookup_bin(context: ContextTypes.DEFAULT_TYPE, bin6: str) -> tuple[str, str]:
     """(bank, country) del BIN. Best-effort: si falla, devuelve N/A."""
     client: BinCheckClient = context.bot_data["bin_client"]
+    lookup = make_bin_lookup(client)
     try:
-        info, _ = await client.lookup(bin6)
-    except BinRateLimited as exc:
-        retry = getattr(exc, "retry_after", None)
-        tag = f"n/d [429/{retry}s]" if retry else "n/d [429]"
-        return tag, tag
-    except BinNotFound:
-        return "n/d [404]", "n/d [404]"
+        info = await lookup(bin6)
     except (BinError, ValueError):
         return "n/d [err]", "n/d [err]"
+    if isinstance(info, RateLimited):
+        retry = info.retry_after
+        tag = f"n/d [429/{retry:g}s]" if retry else "n/d [429]"
+        return tag, tag
+    if info is None:
+        return "n/d [404]", "n/d [404]"
     return info.bank or "N/A", info.country or "N/A"
 
 
