@@ -8,6 +8,7 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from . import proxy as proxy_mod
+from .binlist import BinError
 from .binlist import (
     BinError,
     BinInfo,
@@ -205,43 +206,27 @@ async def target_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     )
 
 
-async def _lookup_bin(bin6: str) -> tuple[str, str]:
+def _bin_prefix(template: str) -> str | None:
+    """Primeros 6 dígitos de la plantilla, aunque haya 'x' de por medio."""
+    first6 = template[:6]
+    if "x" not in first6.lower():
+        return first6
+    digits = "".join(c for c in template if c.isdigit())
+    return digits[:6] if len(digits) >= 6 else None
+
+
+async def _lookup_bin(context: ContextTypes.DEFAULT_TYPE, bin6: str) -> tuple[str, str]:
     """(bank, country) del BIN. Best-effort: si falla, devuelve N/A."""
-    import inspect
-
-    from . import binlist as bl
-
+    client: BinListClient = context.bot_data["bin_client"]
     try:
-        from .config import load_config
-
-        cfg = load_config(require_token=False)
-    except Exception:
-        cfg = None
-
-    for name in ("fetch_bin", "get_bin", "lookup_bin", "lookup", "fetch"):
-        fn = getattr(bl, name, None)
-        if not callable(fn):
-            continue
-        try:
-            res = fn(bin6, cfg) if cfg is not None else fn(bin6)
-        except TypeError:
-            res = fn(bin6)
-        except Exception:
-            continue
-        if inspect.isawaitable(res):
-            res = await res
-        if isinstance(res, tuple):
-            res = res[0]
-        if res is not None:
-            return (
-                getattr(res, "bank", None) or "N/A",
-                getattr(res, "country", None) or "N/A",
-            )
-    return "N/A", "N/A"
+        info, _ = await client.lookup(bin6)
+    except (BinError, ValueError):
+        return "N/A", "N/A"
+    return info.bank or "N/A", info.country or "N/A"
 
 
-async def gen_cmd(update, context):
-    """/gen <pan|mm|yy|cvv> — completa los 'x' con PANs Luhn-validos."""
+async def gen_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/gen <pan|mm|yy|cvv> [n] — completa los 'x' con PANs Luhn-validos."""
     import random
 
     from .formatter import format_gen
@@ -249,7 +234,9 @@ async def gen_cmd(update, context):
 
     args = list(getattr(context, "args", None) or [])
     if not args:
-        await update.message.reply_text("Uso: /gen 416916141303xxxx|01|2029|xxx")
+        await update.message.reply_text(
+            "Uso: `/gen 416916141303xxxx|01|2029|xxx [n]`", parse_mode="Markdown"
+        )
         return
 
     parts = args[0].split("|")
@@ -258,11 +245,13 @@ async def gen_cmd(update, context):
     yy = parts[2].strip() if len(parts) > 2 else ""
     cvv_t = parts[3].strip() if len(parts) > 3 else ""
 
-    if "x" not in pan_t.lower():
-        await update.message.reply_text("La plantilla no trae 'x' que completar.")
+    if not pan_t:
+        await update.message.reply_text("Falta el PAN en la plantilla.")
         return
 
-    n = 10
+    has_x = "x" in pan_t.lower()
+
+    n = 10 if has_x else 1
     if len(args) > 1 and args[1].isdigit():
         n = max(1, min(50, int(args[1])))
 
@@ -273,8 +262,11 @@ async def gen_cmd(update, context):
         )
         cards.append(f"{pan}|{mm}|{yy}|{cvv}")
 
-    bin6 = pan_t[:6]
-    bank, country = await _lookup_bin(bin6)
+    if not has_x:
+        cards = cards[:1]
+
+    bin6 = _bin_prefix(pan_t)
+    bank, country = await _lookup_bin(context, bin6) if bin6 else ("N/A", "N/A")
     await update.message.reply_text(
-        format_gen(cards, bin6, bank, country), parse_mode=None
+        format_gen(cards, bin6 or pan_t[:6], bank, country), parse_mode=None
     )

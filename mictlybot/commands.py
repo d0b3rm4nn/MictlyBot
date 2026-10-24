@@ -8,6 +8,7 @@ from telegram.ext import Application
 COMMANDS: tuple[tuple[str, str], ...] = (
     ("bin", "Consulta un BIN de 6 a 8 dígitos"),
     ("gen", "Genera tarjetas Luhn-validas desde una plantilla"),
+    ("luhn", "Valida el dígito de control"),
     ("check", "Prueba una tarjeta contra Stripe"),
     ("target", "Lista los perfiles configurados"),
     ("start", "Mensaje de bienvenida"),

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import logging
 
-from telegram.ext import Application, CommandHandler, MessageHandler, filters
+from telegram.error import NetworkError, TimedOut
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
 
 from .binlist import BinListClient
 from .commands import register_commands
@@ -14,6 +21,7 @@ from .handlers import (
     check_cmd,
     gen_cmd,
     help_cmd,
+    luhn_checker,
     start,
     target_cmd,
 )
@@ -54,11 +62,22 @@ def build_application() -> Application:
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(CommandHandler("bin", bin_checker))
     app.add_handler(CommandHandler("gen", gen_cmd))
+    app.add_handler(CommandHandler("luhn", luhn_checker))
     app.add_handler(CommandHandler("check", check_cmd))
     app.add_handler(CommandHandler("target", target_cmd))
     app.add_handler(MessageHandler(filters.Regex(r"^\.bin\s+"), bin_checker))
-    app.add_handler(MessageHandler(filters.Regex(r"^\.(luhn|gen)\s+"), gen_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.gen\s+"), gen_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.luhn\s+"), luhn_checker))
     app.add_handler(MessageHandler(filters.Regex(r"^\.check\s+"), check_cmd))
+
+    async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        err = context.error
+        if isinstance(err, (NetworkError, TimedOut)):
+            logging.getLogger("mictlybot").warning("Red: %s", err)
+            return
+        logging.getLogger("mictlybot").exception("Error en handler", exc_info=err)
+
+    app.add_error_handler(on_error)
 
     async def post_shutdown(_: Application) -> None:
         await bin_client.aclose()
