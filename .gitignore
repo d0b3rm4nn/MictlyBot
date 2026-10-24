@@ -14,3 +14,4 @@ __pycache__/
 
 *.bak*
 *.orig
+bins_cache.db

@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 
 import httpx
 
-from .bincheck import BinCheckClient, BinError, BinInfo
+from .bincheck import BinCheckClient, BinInfo, BinNotFound, BinRateLimited
 from .cache import TTLCache
 from .config import load_config
 from .proxy import ProxyPool
@@ -80,7 +80,29 @@ RULES: list[tuple[str, str, str]] = [
 
 CARD_RE = re.compile(r"^\d{12,19}$")
 
-BinLookup = Callable[[str], Awaitable[BinInfo | None]]
+class RateLimited:
+    """El BIN no se pudo resolver por cuota (429), no porque no exista (404)."""
+
+
+RATE_LIMITED = RateLimited()
+
+
+def make_bin_lookup(client: BinCheckClient) -> BinLookup:
+    """Un 404 es `None` (no existe); un 429 es RATE_LIMITED (reintentable)."""
+
+    async def lookup(bin_number: str) -> BinInfo | None | RateLimited:
+        try:
+            info, _ = await client.lookup(bin_number)
+        except BinNotFound:
+            return None
+        except BinRateLimited:
+            return RATE_LIMITED
+        return info
+
+    return lookup
+
+
+BinLookup = Callable[[str], Awaitable[BinInfo | None | RateLimited]]
 
 
 @dataclass(slots=True)
@@ -269,6 +291,18 @@ async def check_card(
     )
     bin_task = bin_lookup(card.bin) if bin_lookup else asyncio.sleep(0, result=None)
     ident, bin_info = await asyncio.gather(ident_task, bin_task)
+    if bin_info is RATE_LIMITED:
+        bin_info = BinInfo(
+            bin_number=card.bin,
+            bank="429 cuota",
+            country="",
+            country_code="",
+            emoji="\u23f3",
+            scheme="",
+            card_type="",
+            brand="",
+            prepaid=False,
+        )
 
     raw = ""
     attempts = 0
@@ -379,19 +413,12 @@ def main(argv: list[str] | None = None) -> int:
     proxy = ProxyPool(config.proxy_file, config.use_proxy)
 
     async def run() -> list[tuple[str, CheckResult | str]]:
-        async def lookup(bin_number: str) -> BinInfo | None:
-            try:
-                info, _ = await bin_client.lookup(bin_number)
-                return info
-            except BinError:
-                return None
-
         try:
             return await check_many(
                 lines,
                 concurrency=args.concurrency,
                 target=target,
-                bin_lookup=lookup,
+                bin_lookup=make_bin_lookup(bin_client),
                 proxy=proxy,
                 timeout=config.http_timeout,
                 use_identity=not args.no_identity,

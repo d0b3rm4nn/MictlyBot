@@ -11,12 +11,11 @@ from . import proxy as proxy_mod
 from .bincheck import (
     BinCheckClient,
     BinError,
-    BinInfo,
     BinNotFound,
     BinRateLimited,
     normalize_bin,
 )
-from .cardcheck import CardData
+from .cardcheck import CardData, make_bin_lookup
 from .cardcheck import check_card as check_stripe
 from .formatter import format_bin, format_check, format_targets
 from .luhn import check_card
@@ -182,18 +181,11 @@ async def check_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         parse_mode="Markdown",
     )
 
-    async def lookup(bin_number: str) -> BinInfo | None:
-        try:
-            info, _ = await bin_client.lookup(bin_number)
-            return info
-        except BinError:
-            return None
-
     try:
         result = await check_stripe(
             card,
             target=target,
-            bin_lookup=lookup,
+            bin_lookup=make_bin_lookup(bin_client),
             proxy=pool,
             timeout=timeout,
         )
