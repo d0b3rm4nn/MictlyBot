@@ -104,4 +104,12 @@ def generate_pans(template: str, n: int = 10) -> list[str]:
         if pan not in seen:
             seen.add(pan)
             out.append(pan)
+    # Plantilla con pocas 'x' (p. ej. solo el BIN): no existen n combinaciones
+    # unicas, asi que repetimos en ciclo para honrar n.
+    if out and len(out) < n:
+        base = list(out)
+        i = 0
+        while len(out) < n:
+            out.append(base[i % len(base)])
+            i += 1
     return out

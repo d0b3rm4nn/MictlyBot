@@ -253,11 +253,14 @@ async def gen_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     from .formatter import format_gen
     from .luhn import generate_pans
+    from .scheme import cvv_length, pan_length
 
     args = list(getattr(context, "args", None) or [])
     if not args:
         await update.message.reply_text(
-            "Uso: `/gen 416916141303xxxx|01|2029|xxx [n]`", parse_mode="Markdown"
+            "Uso: `/gen 416916141303xxxx|01|2029|xxx [n]`\n"
+            "_También acepta solo el BIN (`/gen 416916`) y lo completa solo._",
+            parse_mode="Markdown",
         )
         return
 
@@ -273,9 +276,19 @@ async def gen_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     has_x = "x" in pan_t.lower()
 
+    # Largo y CVV segun esquema: Amex 15/4, Diners 14/3, resto 16/3.
+    target = pan_length(pan_t)
+    if len(pan_t) < target:  # p. ej. solo el BIN -> se rellena solo
+        pan_t = pan_t + "x" * (target - len(pan_t))
+        has_x = True
+
     n = 10 if has_x else 1
     if len(args) > 1 and args[1].isdigit():
         n = max(1, min(50, int(args[1])))
+
+    # CVV: si el usuario mando todo 'x' y el esquema pide otro ancho, se ajusta.
+    if cvv_t and set(cvv_t.lower()) == {"x"} and len(cvv_t) != cvv_length(pan_t):
+        cvv_t = "x" * cvv_length(pan_t)
 
     cards = []
     for pan in generate_pans(pan_t, n):
