@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from .binlist import BinInfo
+from .bincheck import BinInfo
 from .cardcheck import CardData, CheckResult
 from .targets import Target
 
@@ -20,7 +20,7 @@ def _safe(text: str) -> str:
 
 def format_bin(info: BinInfo, from_cache: bool, footer: str) -> str:
     lines = [
-        "✅ **Resultado BinList**",
+        "✅ **Resultado BinCheck**",
         f"💳 **BIN:** `{info.bin_number}`",
         f"🏦 **Banco:** {_safe(info.bank)}",
         f"🌍 **País:** {_safe(info.country)} {info.emoji}",

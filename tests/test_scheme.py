@@ -2,7 +2,7 @@
 
 import asyncio
 
-from mictlybot.binlist import BinError
+from mictlybot.bincheck import BinError
 from mictlybot.handlers import gen_cmd
 from mictlybot.luhn import generate_pans, passes_luhn
 from mictlybot.ratelimit import RateLimiter
@@ -74,3 +74,19 @@ def test_gen_amex_sale_a_15_con_cvv_de_4():
         pan, _mm, _yy, cvv = k.split("|")
         assert len(pan) == 15
         assert len(cvv) == 4
+
+
+def test_generate_pans_da_variedad_con_una_sola_x():
+    pans = generate_pans("37828224631000x", 3)
+    assert len(pans) == 3
+    assert len(set(pans)) == 3
+    assert all(len(p) == 15 and passes_luhn(p) for p in pans)
+
+
+def test_gen_diners_recorta_a_14():
+    u, c = _Update(), _Ctx(["36227212345678xx|01|2029|xxx"])
+    asyncio.run(gen_cmd(u, c))
+    cards = _cards(u.message.sent[-1])
+    assert cards
+    assert all(len(k.split("|")[0]) == 14 for k in cards)
+    assert all(passes_luhn(k.split("|")[0]) for k in cards)

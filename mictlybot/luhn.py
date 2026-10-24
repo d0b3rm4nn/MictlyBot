@@ -78,7 +78,11 @@ def check_digit(partial: str) -> str:
 
 
 def generate_pans(template: str, n: int = 10) -> list[str]:
-    """Completa los 'x' de la plantilla con PANs Luhn-validos y unicos."""
+    """Completa los 'x' de la plantilla con PANs Luhn-validos.
+
+    Si la plantilla no da para n combinaciones unicas (p. ej. solo el BIN con
+    una 'x' final), randomiza tambien el ultimo digito fijo para dar variedad.
+    """
     t = template.strip().lower()
     if not t:
         return []
@@ -88,25 +92,39 @@ def generate_pans(template: str, n: int = 10) -> list[str]:
     last = len(t) - 1
     out: list[str] = []
     seen: set[str] = set()
-    guard = 0
-    while len(out) < n and guard < n * 200:
-        guard += 1
+
+    def _attempt(free: list[int]) -> str | None:
         chars = list(t)
-        for i in idxs:
-            if i != last:
-                chars[i] = str(random.randint(0, 9))
+        for i in free:
+            chars[i] = str(random.randint(0, 9))
         partial = "".join(chars[:last])
         if t[last] == "x":
             chars[last] = check_digit(partial)
         elif check_digit(partial) != t[last]:
-            continue
-        pan = "".join(chars)
-        if pan not in seen:
+            return None
+        return "".join(chars)
+
+    free = [i for i in idxs if i != last]
+    guard = 0
+    while len(out) < n and guard < n * 200:
+        guard += 1
+        pan = _attempt(free)
+        if pan and pan not in seen:
             seen.add(pan)
             out.append(pan)
-    # Plantilla con pocas 'x' (p. ej. solo el BIN): no existen n combinaciones
-    # unicas, asi que repetimos en ciclo para honrar n.
-    if out and len(out) < n:
+
+    # Sin posiciones libres suficientes: randomizamos el digito anterior.
+    if len(out) < n and last >= 1:
+        alt = sorted({i for i in (*free, last - 1) if i >= 0})
+        guard = 0
+        while len(out) < n and guard < n * 200:
+            guard += 1
+            pan = _attempt(alt)
+            if pan and pan not in seen:
+                seen.add(pan)
+                out.append(pan)
+
+    if out and len(out) < n:  # ultimo recurso: repetir en ciclo
         base = list(out)
         i = 0
         while len(out) < n:
