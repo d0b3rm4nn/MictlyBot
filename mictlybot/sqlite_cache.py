@@ -1,7 +1,7 @@
 """Caché de BINs en SQLite, para sobrevivir reinicios del bot.
 
 Reemplaza la caché en memoria de :mod:`mictlybot.cache`. Guarda solo los
-metadatos públicos que devuelve BinList; el TTL se aplica en lectura para no
+metadatos públicos que devuelve BinCheck; el TTL se aplica en lectura para no
 depender de una tarea de limpieza en background.
 """
 
