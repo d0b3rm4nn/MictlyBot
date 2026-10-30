@@ -10,6 +10,7 @@ COMMANDS: tuple[tuple[str, str], ...] = (
     ("gen", "Genera tarjetas Luhn-validas desde una plantilla"),
     ("luhn", "Valida el dígito de control"),
     ("check", "Prueba una tarjeta contra Stripe"),
+    ("otp", "Abre el challenge 3DS y pide el OTP"),
     ("target", "Lista los perfiles configurados"),
     ("start", "Mensaje de bienvenida"),
     ("help", "Ver la ayuda"),

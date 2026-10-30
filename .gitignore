@@ -15,3 +15,6 @@ __pycache__/
 *.bak*
 *.orig
 bins_cache.db
+
+contexto_proyecto.md
+profiles/

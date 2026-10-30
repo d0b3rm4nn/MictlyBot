@@ -38,6 +38,13 @@ class Config:
     use_proxy: bool = True
     proxy_file: str = "proxy.txt"
     cardcheck_bin_cache: bool = True
+    otp_mode: str = "manual"
+    otp_timeout_seconds: float = 120.0
+    otp_profile_dir: str = "profiles"
+    otp_headless: bool = True
+    otp_user_agent: str = ""
+    otp_platform: str = "Linux"
+    fivesim_token: str = ""
 
     # respaldo si targets.toml no existe
     stripe_endpoint: str = "https://api.stripe.com/v1/payment_methods"
@@ -107,6 +114,13 @@ def load_config(*, require_token: bool = True) -> Config:
         use_proxy=_env_bool("USE_PROXY", True),
         proxy_file=os.getenv("PROXY_FILE", "proxy.txt").strip(),
         cardcheck_bin_cache=_env_bool("CARDCHECK_BIN_CACHE", True),
+        otp_mode=os.getenv("OTP_MODE", "manual").strip().lower(),
+        otp_timeout_seconds=_env_float("OTP_TIMEOUT_SECONDS", 120.0),
+        otp_profile_dir=os.getenv("OTP_PROFILE_DIR", "profiles").strip(),
+        otp_headless=_env_bool("OTP_HEADLESS", True),
+        otp_user_agent=os.getenv("OTP_USER_AGENT", "").strip(),
+        otp_platform=os.getenv("OTP_PLATFORM", "Linux").strip(),
+        fivesim_token=os.getenv("FIVESIM_TOKEN", "").strip(),
         stripe_endpoint=os.getenv(
             "STRIPE_ENDPOINT", "https://api.stripe.com/v1/payment_methods"
         ).strip(),

@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
+from contextlib import suppress
+from pathlib import Path
 
 from telegram import Update
 from telegram.ext import ContextTypes
@@ -19,6 +22,9 @@ from .cardcheck import CardData, RateLimited, make_bin_lookup
 from .cardcheck import check_card as check_stripe
 from .formatter import format_bin, format_check, format_targets
 from .luhn import check_card
+from .otp.models import ManualOtpSource, OtpSource
+from .otp.runner import check_then_solve
+from .otp.sources import FiveSimOtpSource
 from .ratelimit import RateLimiter
 from .targets import TargetError, TargetRegistry
 
@@ -40,10 +46,11 @@ HELP = (
     "`/bin <6-8 dígitos>` — busca banco, país, marca y tipo\n"
     "`/luhn <número>` — valida el dígito de control\n"
     "`/check <cc|mm|aa|cvv> [target]` — prueba la tarjeta contra Stripe\n"
+    "`/otp <cc|mm|aa|cvv> [target]` — abre el 3DS y pide el OTP\n"
     "`/target` — lista los perfiles configurados\n"
     "`/start` — mensaje de bienvenida\n"
     "`/help` — esta ayuda\n\n"
-    "_Atajos sin slash: `.bin`, `.luhn`, `.check`_\n\n"
+    "_Atajos sin slash: `.bin`, `.luhn`, `.check`, `.otp`_\n\n"
     "_`/luhn` solo comprueba el dígito de control. `/check` sí envía el número "
     "completo, así que ese no lo puedes sacar de la caché._"
 )
@@ -311,3 +318,124 @@ async def gen_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         format_gen(cards, bin6 or pan_t[:6], bank, country), parse_mode=None
     )
+
+
+async def otp_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Abre el challenge 3DS y pide el OTP por el chat."""
+    limiter: RateLimiter = context.bot_data["check_limiter"]
+    registry: TargetRegistry = context.bot_data["targets"]
+    pool = context.bot_data["proxy_pool"]
+    footer: str = context.bot_data["footer"]
+
+    allowed, retry_after = limiter.allow(update.effective_user.id)
+    if not allowed:
+        await update.message.reply_text(
+            f"⏳ Vas muy rápido. Espera {retry_after:.0f} s e inténtalo de nuevo."
+        )
+        return
+
+    mode = str(context.bot_data.get("otp_mode", "manual")).lower()
+    if mode == "off":
+        await update.message.reply_text(
+            "🔌 El flujo OTP está desactivado (`OTP_MODE=off`).",
+            parse_mode="Markdown",
+        )
+        return
+
+    parts = (update.message.text or "").split()
+    if len(parts) < 2:
+        await update.message.reply_text(
+            "**Uso:** `/otp 4571736012345678|12|2028|123 [target]`\n"
+            "_Abre el challenge 3DS y te pide el OTP en el chat._",
+            parse_mode="Markdown",
+        )
+        return
+
+    try:
+        card = CardData.parse(parts[1])
+    except ValueError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+
+    try:
+        target = registry.get(parts[2] if len(parts) > 2 else None)
+    except TargetError as exc:
+        await update.message.reply_text(f"❌ {exc}")
+        return
+
+    if not target.has_key:
+        await update.message.reply_text(
+            f"🔑 El target `{target.name}` no tiene claves configuradas.",
+            parse_mode="Markdown",
+        )
+        return
+
+    waiting = await update.message.reply_text(
+        f"📡 Probando `{card.masked}` en `{target.name}`...", parse_mode="Markdown"
+    )
+
+    future: asyncio.Future[str] = asyncio.get_running_loop().create_future()
+    waiters: dict = context.bot_data.setdefault("otp_waiters", {})
+    waiters[update.effective_user.id] = future
+
+    fivesim: FiveSimOtpSource | None = None
+    source: OtpSource
+    if mode == "fivesim" and context.bot_data.get("fivesim_token"):
+        fivesim = FiveSimOtpSource(context.bot_data["fivesim_token"])
+        source = fivesim
+    else:
+        source = ManualOtpSource(future)
+
+    bin_client = context.bot_data.get("bin_client")
+    try:
+        run = await check_then_solve(
+            card,
+            target=target,
+            source_factory=lambda: source,
+            proxy_pool=pool,
+            bin_lookup=make_bin_lookup(bin_client) if bin_client else None,
+            timeout=context.bot_data.get("http_timeout", 30.0),
+            otp_timeout=context.bot_data.get("otp_timeout", 120.0),
+            profile_root=Path(context.bot_data["otp_profile_dir"]),
+            user_agent=context.bot_data["otp_user_agent"],
+            headless=context.bot_data["otp_headless"],
+            platform=context.bot_data["otp_platform"],
+        )
+    except Exception:
+        log.exception("Fallo inesperado en /otp de %s", card.masked)
+        await waiting.edit_text("⚠️ Error interno. Inténtalo más tarde.")
+        if fivesim:
+            with suppress(Exception):
+                await fivesim.release(cancel=True)
+        return
+    finally:
+        waiters.pop(update.effective_user.id, None)
+
+    if fivesim:
+        with suppress(Exception):
+            await fivesim.release(cancel=not (run.outcome and run.outcome.ok))
+
+    if run.outcome is None:
+        await waiting.edit_text(
+            format_check(card, run.check, footer), parse_mode="Markdown"
+        )
+        return
+
+    icon = "✅" if run.outcome.ok else "❌"
+    await waiting.edit_text(
+        f"{icon} **OTP:** `{run.outcome.kind}`\n"
+        f"💳 `{card.masked}`\n"
+        f"🎯 `{target.name}`\n"
+        f"_{run.outcome.detail}_\n"
+        f"`{run.outcome.final_url[:120]}`" + footer,
+        parse_mode="Markdown",
+    )
+
+
+async def otp_code_catcher(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Entrega el código al solver que está esperando."""
+    waiters: dict = context.bot_data.get("otp_waiters") or {}
+    future = waiters.get(update.effective_user.id)
+    if future is None or future.done():
+        return
+    future.set_result((update.message.text or "").strip())

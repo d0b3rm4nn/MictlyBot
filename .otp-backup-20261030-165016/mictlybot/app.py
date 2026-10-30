@@ -1,0 +1,98 @@
+"""Arranque de la aplicación."""
+
+from __future__ import annotations
+
+import logging
+
+from telegram.error import NetworkError, TimedOut
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    ContextTypes,
+    MessageHandler,
+    filters,
+)
+
+from .bincheck import BinCheckClient
+from .commands import register_commands
+from .config import load_config
+from .handlers import (
+    bin_checker,
+    check_cmd,
+    gen_cmd,
+    help_cmd,
+    luhn_checker,
+    start,
+    target_cmd,
+)
+from .proxy import ProxyPool
+from .ratelimit import RateLimiter
+from .sqlite_cache import SQLiteCache
+from .targets import TargetRegistry
+
+
+def build_application() -> Application:
+    config = load_config()
+    logging.basicConfig(
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        level=logging.INFO,
+    )
+    # httpx registra la URL completa de cada request, incluida la del token
+    # de Telegram (/bot<TOKEN>/getUpdates). Silenciamos su logger.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
+    cache = SQLiteCache(config.cache_db_path, config.cache_ttl_seconds)
+    pool = ProxyPool(config.proxy_file, config.use_proxy)
+    bin_client = BinCheckClient(
+        cache=cache,
+        user_agent=config.user_agent,
+        proxy_provider=pool.random,
+    )
+
+    app = Application.builder().token(config.token).build()
+    app.bot_data["bin_client"] = bin_client
+    app.bot_data["rate_limiter"] = RateLimiter(config.rate_limit_per_minute)
+    app.bot_data["check_limiter"] = RateLimiter(config.check_rate_limit_per_minute)
+    app.bot_data["targets"] = TargetRegistry.from_config(config)
+    app.bot_data["proxy_pool"] = pool
+    app.bot_data["http_timeout"] = config.http_timeout
+    app.bot_data["footer"] = config.footer
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_cmd))
+    app.add_handler(CommandHandler("bin", bin_checker))
+    app.add_handler(CommandHandler("gen", gen_cmd))
+    app.add_handler(CommandHandler("luhn", luhn_checker))
+    app.add_handler(CommandHandler("check", check_cmd))
+    app.add_handler(CommandHandler("target", target_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.bin\s+"), bin_checker))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.gen\s+"), gen_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.luhn\s+"), luhn_checker))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.check\s+"), check_cmd))
+
+    async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+        err = context.error
+        if isinstance(err, (NetworkError, TimedOut)):
+            logging.getLogger("mictlybot").warning("Red: %s", err)
+            return
+        logging.getLogger("mictlybot").exception("Error en handler", exc_info=err)
+
+    app.add_error_handler(on_error)
+
+    async def post_shutdown(_: Application) -> None:
+        await bin_client.aclose()
+        cache.close()
+
+    app.post_init = register_commands
+    app.post_shutdown = post_shutdown
+
+    return app
+
+
+def run() -> None:
+    app = build_application()
+    logging.info(
+        "Bot iniciado: BinCheck + caché persistente + checker (%d proxies)",
+        app.bot_data["proxy_pool"].count(),
+    )
+    app.run_polling()

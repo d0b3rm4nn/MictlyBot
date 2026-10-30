@@ -22,6 +22,8 @@ from .handlers import (
     gen_cmd,
     help_cmd,
     luhn_checker,
+    otp_code_catcher,
+    otp_cmd,
     start,
     target_cmd,
 )
@@ -57,6 +59,14 @@ def build_application() -> Application:
     app.bot_data["proxy_pool"] = pool
     app.bot_data["http_timeout"] = config.http_timeout
     app.bot_data["footer"] = config.footer
+    app.bot_data["otp_mode"] = config.otp_mode
+    app.bot_data["otp_timeout"] = config.otp_timeout_seconds
+    app.bot_data["otp_profile_dir"] = config.otp_profile_dir
+    app.bot_data["otp_user_agent"] = config.otp_user_agent or config.user_agent
+    app.bot_data["otp_headless"] = config.otp_headless
+    app.bot_data["otp_platform"] = config.otp_platform
+    app.bot_data["fivesim_token"] = config.fivesim_token
+    app.bot_data["otp_waiters"] = {}
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_cmd))
@@ -65,10 +75,13 @@ def build_application() -> Application:
     app.add_handler(CommandHandler("luhn", luhn_checker))
     app.add_handler(CommandHandler("check", check_cmd))
     app.add_handler(CommandHandler("target", target_cmd))
+    app.add_handler(CommandHandler("otp", otp_cmd))
     app.add_handler(MessageHandler(filters.Regex(r"^\.bin\s+"), bin_checker))
     app.add_handler(MessageHandler(filters.Regex(r"^\.gen\s+"), gen_cmd))
     app.add_handler(MessageHandler(filters.Regex(r"^\.luhn\s+"), luhn_checker))
     app.add_handler(MessageHandler(filters.Regex(r"^\.check\s+"), check_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"^\.otp\s+"), otp_cmd))
+    app.add_handler(MessageHandler(filters.Regex(r"^\d{4,8}$"), otp_code_catcher))
 
     async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         err = context.error

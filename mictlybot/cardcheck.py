@@ -74,6 +74,7 @@ RULES: list[tuple[str, str, str]] = [
         "danger",
         "MISSING CARD NUMBER",
     ),
+    ('"next_action"', "info", "3DS CHALLENGE"),
     ('"object": "payment_method"', "info", "CCN LIVE"),
     ("-1", "danger", "UPDATE NONCE"),
 ]
